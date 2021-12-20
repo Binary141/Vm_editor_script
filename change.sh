@@ -38,23 +38,47 @@ VAR6='/g ./users.txt'
 echo "What do you want the new hostname to be?";
 read hostname;
 hostnamectl set-hostname $hostname
+VAR7='s/ubuntuserver/'
+VAR8=$hostname
+VAR9='/g /etc/hosts'
+
+sudo sed -i $VAR7$VAR8$VAR9
+
+echo "set hostname"
 
 #apply new network settings
 sudo sed -i $VAR1$VAR2$VAR3
-netplan apply
+echo "set ip addr"
 
 #replace password in text file
 sudo sed -i $VAR4$VAR5$VAR6
 
 #add new user
 sudo adduser ${username} < ./users.txt;
+echo "added user"
 
 #add user to sudoers file to allow for use of sudo
 sudo usermod -aG sudo ${username}
+echo "added user to sudo group"
+
+read -p "Do you want to update the system? [y/n] " -n 1 -r
+echo    # (optional) move to a new line
+
+read -p   "Do you want to reboot or shutdown? [r/s (default r)] " -n 1 -r rs
+echo    # (optional) move to a new line
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt-get update && sudo apt-get -y upgrade;
+fi
 
 #file cleanup to remove everything after all tasks completed
 rm users.txt
 rm change.sh
 rm keys.txt
 
-reboot #reboot to force apply all changes and updates the hostname of the machine
+case $rs in
+        [Rr]* ) sudo reboot;;
+        [Ss]* ) sudo shutdown -h now;;
+        * ) sudo reboot;;
+esac
