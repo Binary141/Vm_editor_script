@@ -1,83 +1,67 @@
-#!/bin/bash
+#!/bin/sh
 
 #checks to see if it is ran as root. We need to be ran as root so that netplan, hostname
 # adduser, and usermod work correctly
-if [[ $EUID -ne 0 ]]; then
-   echo "This script must be run as root"
+if [ "$(id -u)" -ne 0 ]; then
+   printf "This script must be run as root"
    exit 1
 fi
 
-if [ -d ".ssh" ]; then #if the .ssh folder exists, just append the contents from keys.txt
-        cat keys.txt >> .ssh/authorized_keys
-        echo "Folder exists"
-else #if the .ssh folder exists, just append the contents from keys.txt
-        mkdir -p .ssh;
-        cat keys.txt >> .ssh/authorized_keys
-        echo "folder created"
-fi
+printf "What do you want to make the ip address? "
+read -r ip
 
-echo "What do you want to make the ip address?";
-read ip;
+printf "What do you want the new username to be? "
+read -r username
 
-VAR1='s/192.168.1.249/' #ip address that is in the .yaml file of the vm clone
-VAR2=$ip
-VAR3='/g /etc/netplan/00-installer-config.yaml'
+# Read in a password without printing the characters
+stty -echo
+printf "What do you want the new password to be? "
+read -r password
+stty echo
+printf "\n" # Move to a new line
 
-echo $VAR1$VAR2$VAR3
+printf "What do you want the new hostname to be? "
+read -r hostname
 
-echo "What do you want the new username to be?";
-read username;
+printf "Do you want to update the system? [y/n] "
+read -r reply
 
-echo "What do you want the new password to be?";
-read password;
+printf "Do you want to reboot or shutdown? [r/s (default r)] "
+read -r rs
 
-VAR4='s/password/'
-VAR5=$password
-VAR6='/g ./users.txt'
+printf "\n\n"   # Move to a new line
 
-echo "What do you want the new hostname to be?";
-read hostname;
-hostnamectl set-hostname $hostname
-VAR7='s/ubuntuserver/'
-VAR8=$hostname
-VAR9='/g /etc/hosts'
+hostnamectl set-hostname "${hostname}"
 
-sudo sed -i $VAR7$VAR8$VAR9
+sudo sed -i "s/ubuntuserver/${hostname}/g" /etc/hosts
 
-echo "set hostname"
+printf "\nset hostname\n"
 
-#apply new network settings
-sudo sed -i $VAR1$VAR2$VAR3
-echo "set ip addr"
+# Apply new network settings
+sudo sed -i "s/192.168.1.249/${ip}/g" "/etc/netplan/00-installer-config.yaml"
+printf "set ip addr\n"
 
-#replace password in text file
-sudo sed -i $VAR4$VAR5$VAR6
+# Add new user
+sudo useradd -m -d "/home/${username}" "${username}" -p "$(openssl passwd -1 "${password}")" -s /bin/bash
+printf "added user %s" "${username}\n"
 
-#add new user
-sudo adduser ${username} < ./users.txt;
-echo "added user"
+# Add user to sudoers file to allow for use of sudo
+sudo usermod -aG sudo "${username}"
+printf "added %s to the sudo group" "${username}\n"
 
-#add user to sudoers file to allow for use of sudo
-sudo usermod -aG sudo ${username}
-echo "added user to sudo group"
+# If the reply is either 'Y' or 'y' then update the system
+case "${reply}" in
+        [Yy]* ) sudo apt-get update && sudo apt-get -y upgrade;;
+        * ) printf "Nothing needs to be done\n";;
+esac
 
-read -p "Do you want to update the system? [y/n] " -n 1 -r
-echo    # (optional) move to a new line
-
-read -p   "Do you want to reboot or shutdown? [r/s (default r)] " -n 1 -r rs
-echo    # (optional) move to a new line
-
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-        export DEBIAN_FRONTEND=noninteractive
-        sudo apt-get update && sudo apt-get -y upgrade;
-fi
-
-#file cleanup to remove everything after all tasks completed
-rm users.txt
+# File cleanup to remove everything after all tasks completed
 rm change.sh
-rm keys.txt
 
-case $rs in
+sleep 1
+
+# Reboot or shutdown, but default to just a reboot
+case ${rs} in
         [Rr]* ) sudo reboot;;
         [Ss]* ) sudo shutdown -h now;;
         * ) sudo reboot;;
